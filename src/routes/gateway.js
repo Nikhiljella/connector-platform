@@ -25,11 +25,11 @@ router.post('/preview', async (req, res) => {
   }
 });
 
-// GET /api/connectors — list all connectors
+// GET /api/connectors — list all connectors ordered by priority
 router.get('/connectors', (req, res) => {
   try {
     const db = getDb();
-    const connectors = db.prepare('SELECT * FROM connectors ORDER BY created_at DESC').all();
+    const connectors = db.prepare('SELECT * FROM connectors ORDER BY priority ASC, id ASC').all();
     res.json({ success: true, data: connectors });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -51,6 +51,84 @@ router.get('/connectors/:id', (req, res) => {
     } catch (e) { /* table may not exist yet */ }
 
     res.json({ success: true, data: { ...connector, dataCount } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PATCH /api/connectors/:id/priority — swap priority with adjacent connector
+router.patch('/connectors/:id/priority', (req, res) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const { direction } = req.body; // 'up' | 'down'
+
+    const current = db.prepare('SELECT id, priority FROM connectors WHERE id = ?').get(id);
+    if (!current) return res.status(404).json({ success: false, error: 'Connector not found' });
+
+    // Find the adjacent connector to swap with
+    let adjacent;
+    if (direction === 'up') {
+      adjacent = db.prepare(
+        'SELECT id, priority FROM connectors WHERE priority < ? ORDER BY priority DESC LIMIT 1'
+      ).get(current.priority);
+    } else {
+      adjacent = db.prepare(
+        'SELECT id, priority FROM connectors WHERE priority > ? ORDER BY priority ASC LIMIT 1'
+      ).get(current.priority);
+    }
+
+    if (!adjacent) return res.json({ success: true, message: 'Already at boundary.' });
+
+    // Swap
+    db.prepare('UPDATE connectors SET priority = ? WHERE id = ?').run(adjacent.priority, current.id);
+    db.prepare('UPDATE connectors SET priority = ? WHERE id = ?').run(current.priority, adjacent.id);
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/field-map — field → connectors mapping derived from transforms, ordered by priority
+router.get('/field-map', (req, res) => {
+  try {
+    const db = getDb();
+    const connectors = db.prepare(
+      "SELECT id, name, target_object, transforms, priority FROM connectors WHERE status = 'active' ORDER BY priority ASC"
+    ).all();
+
+    // Build map: { party: { email: [{connectorId, connectorName, priority, sourceField}] } }
+    const fieldMap = {};
+
+    for (const connector of connectors) {
+      let transforms = [];
+      try { transforms = JSON.parse(connector.transforms || '[]'); } catch { continue; }
+
+      const targetObj = connector.target_object || 'unknown';
+      if (!fieldMap[targetObj]) fieldMap[targetObj] = {};
+
+      // Find pick op to know selected source fields
+      const pickOp = transforms.find(t => t.op === 'pick');
+      const selectedFields = pickOp ? pickOp.fields : [];
+
+      // Build a map of sourceField → targetField from rename ops
+      const renameMap = {};
+      transforms.filter(t => t.op === 'rename').forEach(t => { renameMap[t.from] = t.to; });
+
+      for (const src of selectedFields) {
+        const tgt = renameMap[src] || src;
+        if (!fieldMap[targetObj][tgt]) fieldMap[targetObj][tgt] = [];
+        fieldMap[targetObj][tgt].push({
+          connectorId: connector.id,
+          connectorName: connector.name,
+          priority: connector.priority,
+          sourceField: src,
+        });
+      }
+    }
+
+    res.json({ success: true, data: fieldMap });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

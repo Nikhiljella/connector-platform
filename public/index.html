@@ -244,18 +244,40 @@
 
     <!-- ═══ TAB: Connectors ═══ -->
     <div class="tab-content" id="panelConnectors" style="grid-column: 1 / -1;">
-      <div class="card">
-        <div class="card-title">
-          <span class="icon" style="background: rgba(52,211,153,0.15); color: var(--success);">🔗</span>
-          Registered Connectors
-        </div>
-        <div class="connector-list" id="connectorList">
-          <div class="empty-state">
-            <div class="icon">🔌</div>
-            <h3>No connectors yet</h3>
-            <p>Onboard your first connector to see it here.</p>
+      <div style="display: flex; flex-direction: column; gap: 24px;">
+
+        <!-- Connectors Table -->
+        <div class="card">
+          <div class="card-title">
+            <span class="icon" style="background: rgba(52,211,153,0.15); color: var(--success);">🔗</span>
+            Registered Connectors
+            <span style="margin-left: auto; font-size: 11px; color: var(--text-muted); font-weight: 400;">Priority ↑ = higher precedence in field conflicts</span>
+          </div>
+          <div id="connectorTableWrap">
+            <div class="empty-state">
+              <div class="icon">🔌</div>
+              <h3>No connectors yet</h3>
+              <p>Onboard your first connector to see it here.</p>
+            </div>
           </div>
         </div>
+
+        <!-- Field Map -->
+        <div class="card">
+          <div class="card-title">
+            <span class="icon" style="background: rgba(251,191,36,0.15); color: var(--warning);">🗺️</span>
+            Party / Account Field Map
+            <span style="margin-left: auto; font-size: 11px; color: var(--text-muted); font-weight: 400;">Shows which connector is the source for each field</span>
+          </div>
+          <div id="fieldMapContent">
+            <div class="empty-state">
+              <div class="icon">🗂️</div>
+              <h3>No field mappings yet</h3>
+              <p>Onboard connectors with field mapping to see the field map here.</p>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 

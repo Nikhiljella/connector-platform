@@ -479,57 +479,173 @@
 
   async function loadConnectors() {
     try {
-      const res = await fetch('/api/connectors');
-      const json = await res.json();
+      const [connRes, mapRes] = await Promise.all([
+        fetch('/api/connectors'),
+        fetch('/api/field-map'),
+      ]);
+      const connJson = await connRes.json();
+      const mapJson = await mapRes.json();
 
-      if (!json.success || json.data.length === 0) {
-        $('#connectorList').innerHTML = `
-          <div class="empty-state">
-            <div class="icon">🔌</div>
-            <h3>No connectors yet</h3>
-            <p>Onboard your first connector to see it here.</p>
-          </div>`;
-        return;
-      }
-
-      $('#connectorList').innerHTML = json.data.map(c => {
-        let transforms = [];
-        try { transforms = JSON.parse(c.transforms || '[]'); } catch {}
-        const pickOp = transforms.find(t => t.op === 'pick');
-        const renameOps = transforms.filter(t => t.op === 'rename');
-        const fieldCount = pickOp ? pickOp.fields.length : 0;
-        const mappingCount = renameOps.length;
-
-        return `
-          <div class="connector-item fade-in">
-            <div class="connector-info">
-              <div class="connector-avatar">${c.name.charAt(0).toUpperCase()}</div>
-              <div class="connector-meta">
-                <h4>${escapeHtml(c.name)}</h4>
-                <p>${escapeHtml(c.api_url)}</p>
-                <p style="margin-top:2px;font-size:11px;color:var(--text-muted);">
-                  Schedule: ${escapeHtml(c.schedule)} · Created: ${new Date(c.created_at).toLocaleString()}
-                  ${c.last_fetched_at ? ` · Last fetch: ${new Date(c.last_fetched_at).toLocaleString()}` : ''}
-                </p>
-                ${fieldCount > 0 ? `
-                  <p style="margin-top:4px;font-size:11px;color:var(--text-muted);">
-                    <span class="transform-pill">📥 ${fieldCount} field${fieldCount !== 1 ? 's' : ''} selected</span>
-                    ${mappingCount > 0 ? `<span class="transform-pill">🔀 ${mappingCount} field${mappingCount !== 1 ? 's' : ''} mapped</span>` : ''}
-                  </p>` : ''}
-              </div>
-            </div>
-            <div class="connector-actions">
-              <span class="status-badge ${c.status === 'active' ? 'active' : c.last_error ? 'error' : 'pending'}">
-                ${c.status}
-              </span>
-              <button class="btn btn-sm btn-danger" onclick="deleteConnector(${c.id})">Delete</button>
-            </div>
-          </div>`;
-      }).join('');
+      renderConnectorTable(connJson.success ? connJson.data : []);
+      renderFieldMap(mapJson.success ? mapJson.data : {});
     } catch (err) {
       toast(`Failed to load connectors: ${err.message}`, 'error');
     }
   }
+
+  function renderConnectorTable(connectors) {
+    const wrap = $('#connectorTableWrap');
+
+    if (!connectors.length) {
+      wrap.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">🔌</div>
+          <h3>No connectors yet</h3>
+          <p>Onboard your first connector to see it here.</p>
+        </div>`;
+      return;
+    }
+
+    wrap.innerHTML = `
+      <div class="ct-wrap">
+        <table class="ct">
+          <thead>
+            <tr>
+              <th style="width:80px;">Priority</th>
+              <th>Connector</th>
+              <th>Target</th>
+              <th>Fields</th>
+              <th>Schedule</th>
+              <th>Last Fetch</th>
+              <th>Status</th>
+              <th style="width:80px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${connectors.map((c, idx) => {
+              let transforms = [];
+              try { transforms = JSON.parse(c.transforms || '[]'); } catch {}
+              const pickOp = transforms.find(t => t.op === 'pick');
+              const renameOps = transforms.filter(t => t.op === 'rename');
+              const selectedCount = pickOp ? pickOp.fields.length : 0;
+              const mappedCount = renameOps.length;
+              const isFirst = idx === 0;
+              const isLast = idx === connectors.length - 1;
+
+              return `<tr class="ct-row fade-in">
+                <td>
+                  <div class="priority-cell">
+                    <span class="priority-badge">${c.priority}</span>
+                    <div class="priority-btns">
+                      <button class="prio-btn" title="Move up" onclick="shiftPriority(${c.id},'up')" ${isFirst ? 'disabled' : ''}>↑</button>
+                      <button class="prio-btn" title="Move down" onclick="shiftPriority(${c.id},'down')" ${isLast ? 'disabled' : ''}>↓</button>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div class="ct-name-cell">
+                    <div class="connector-avatar" style="width:32px;height:32px;font-size:14px;">${c.name.charAt(0).toUpperCase()}</div>
+                    <div>
+                      <div style="font-weight:600;font-size:13px;">${escapeHtml(c.name)}</div>
+                      <div style="font-size:11px;color:var(--text-muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.api_url)}</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  ${c.target_object
+                    ? `<span class="obj-badge ${c.target_object}">${c.target_object === 'party' ? '👤' : '🏦'} ${c.target_object}</span>`
+                    : '<span style="color:var(--text-muted);font-size:12px;">—</span>'}
+                </td>
+                <td>
+                  <div style="display:flex;flex-direction:column;gap:4px;">
+                    ${selectedCount ? `<span class="transform-pill">📥 ${selectedCount} selected</span>` : ''}
+                    ${mappedCount ? `<span class="transform-pill">🔀 ${mappedCount} mapped</span>` : ''}
+                    ${!selectedCount && !mappedCount ? '<span style="color:var(--text-muted);font-size:12px;">raw</span>' : ''}
+                  </div>
+                </td>
+                <td style="font-size:12px;font-family:var(--font-mono);color:var(--text-secondary);">${escapeHtml(c.schedule)}</td>
+                <td style="font-size:12px;color:var(--text-muted);">
+                  ${c.last_fetched_at ? new Date(c.last_fetched_at).toLocaleString() : '—'}
+                </td>
+                <td>
+                  <span class="status-badge ${c.status === 'active' ? 'active' : c.last_error ? 'error' : 'pending'}">
+                    ${c.status}
+                  </span>
+                </td>
+                <td>
+                  <button class="btn btn-sm btn-danger" onclick="deleteConnector(${c.id})">Delete</button>
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function renderFieldMap(fieldMap) {
+    const el = $('#fieldMapContent');
+    const objectTypes = Object.keys(fieldMap);
+
+    if (!objectTypes.length) {
+      el.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">🗂️</div>
+          <h3>No field mappings yet</h3>
+          <p>Onboard connectors with field mapping to see the field map here.</p>
+        </div>`;
+      return;
+    }
+
+    el.innerHTML = objectTypes.map(objType => {
+      const fields = fieldMap[objType];
+      const fieldNames = Object.keys(fields).sort();
+
+      return `
+        <div class="fm-section">
+          <div class="fm-object-label">
+            ${objType === 'party' ? '👤' : '🏦'} ${capitalize(objType)} Object
+          </div>
+          <div class="fm-grid">
+            ${fieldNames.map(field => {
+              const sources = fields[field]; // sorted by priority already
+              const hasConflict = sources.length > 1;
+
+              return `
+                <div class="fm-field ${hasConflict ? 'conflict' : ''}">
+                  <div class="fm-field-name">
+                    ${escapeHtml(field)}
+                    ${hasConflict ? `<span class="conflict-badge">⚡ ${sources.length} sources</span>` : ''}
+                  </div>
+                  <div class="fm-sources">
+                    ${sources.map((s, i) => `
+                      <div class="fm-source ${i === 0 ? 'primary' : 'fallback'}">
+                        <span class="fm-rank">${i === 0 ? 'PRIMARY' : `FALLBACK ${i}`}</span>
+                        <span class="fm-connector-name">${escapeHtml(s.connectorName)}</span>
+                        <span class="fm-source-field">← ${escapeHtml(s.sourceField)}</span>
+                        <span class="fm-priority-num">P${s.priority}</span>
+                      </div>`).join('')}
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  window.shiftPriority = async function (id, direction) {
+    try {
+      const res = await fetch(`/api/connectors/${id}/priority`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ direction }),
+      });
+      const json = await res.json();
+      if (json.success) loadConnectors();
+      else toast(json.error || 'Failed to update priority.', 'error');
+    } catch (err) {
+      toast(`Error: ${err.message}`, 'error');
+    }
+  };
 
   window.deleteConnector = async function (id) {
     if (!confirm('Are you sure you want to delete this connector?')) return;

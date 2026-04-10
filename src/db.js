@@ -46,10 +46,18 @@ function initTables() {
     );
   `);
 
-  // Migrate: add transforms column if it doesn't exist (for databases created before this column was added)
+  // Migrations for columns added after initial release
   const cols = db.prepare("PRAGMA table_info(connectors)").all().map(c => c.name);
   if (!cols.includes('transforms')) {
     db.exec("ALTER TABLE connectors ADD COLUMN transforms TEXT DEFAULT '[]'");
+  }
+  if (!cols.includes('target_object')) {
+    db.exec("ALTER TABLE connectors ADD COLUMN target_object TEXT");
+  }
+  if (!cols.includes('priority')) {
+    db.exec("ALTER TABLE connectors ADD COLUMN priority INTEGER DEFAULT 0");
+    // Seed priority from id order for existing connectors
+    db.exec("UPDATE connectors SET priority = id WHERE priority = 0 OR priority IS NULL");
   }
 }
 
