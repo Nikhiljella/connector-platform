@@ -142,13 +142,77 @@ router.delete('/connectors/:id', (req, res) => {
     const id = req.params.id;
 
     stopConnector(Number(id));
+    // Delete child rows first (foreign key constraint)
     db.prepare('DELETE FROM consolidated_data WHERE connector_id = ?').run(id);
+    db.prepare('DELETE FROM party_objects WHERE source_connector_id = ?').run(id);
+    db.prepare('DELETE FROM account_objects WHERE source_connector_id = ?').run(id);
+    db.prepare('DELETE FROM source_mapping WHERE connector_id = ?').run(id);
     db.prepare('DELETE FROM connectors WHERE id = ?').run(id);
 
     const tableName = getConnectorDataTableName(id);
     try { db.exec(`DROP TABLE IF EXISTS ${tableName}`); } catch (e) { /* ignore */ }
 
     res.json({ success: true, message: `Connector ${id} deleted.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/source-mapping — sync metadata per connector
+router.get('/source-mapping', (req, res) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM source_mapping ORDER BY connector_id ASC').all();
+    const parsed = rows.map(r => ({
+      ...r,
+      selected_fields: (() => { try { return JSON.parse(r.selected_fields); } catch { return []; } })(),
+      field_mapping: (() => { try { return JSON.parse(r.field_mapping); } catch { return {}; } })(),
+    }));
+    res.json({ success: true, data: parsed });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/party-objects — paginated party objects
+router.get('/party-objects', (req, res) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(parseInt(req.query.limit) || 50, 500);
+    const offset = parseInt(req.query.offset) || 0;
+    const connectorId = req.query.connector_id;
+
+    let where = connectorId ? 'WHERE source_connector_id = ?' : '';
+    const params = connectorId ? [connectorId] : [];
+
+    const total = db.prepare(`SELECT COUNT(*) as cnt FROM party_objects ${where}`).get(...params).cnt;
+    const rows = db.prepare(
+      `SELECT * FROM party_objects ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+    ).all(...params, limit, offset);
+
+    res.json({ success: true, data: rows, pagination: { total, limit, offset } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/account-objects — paginated account objects
+router.get('/account-objects', (req, res) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(parseInt(req.query.limit) || 50, 500);
+    const offset = parseInt(req.query.offset) || 0;
+    const connectorId = req.query.connector_id;
+
+    let where = connectorId ? 'WHERE source_connector_id = ?' : '';
+    const params = connectorId ? [connectorId] : [];
+
+    const total = db.prepare(`SELECT COUNT(*) as cnt FROM account_objects ${where}`).get(...params).cnt;
+    const rows = db.prepare(
+      `SELECT * FROM account_objects ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+    ).all(...params, limit, offset);
+
+    res.json({ success: true, data: rows, pagination: { total, limit, offset } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

@@ -262,6 +262,22 @@
           </div>
         </div>
 
+        <!-- Source Mapping -->
+        <div class="card">
+          <div class="card-title">
+            <span class="icon" style="background: rgba(96,165,250,0.15); color: var(--running);">🔄</span>
+            Source Mapping
+            <span style="margin-left: auto; font-size: 11px; color: var(--text-muted); font-weight: 400;">Sync metadata per connector — updated every aggregation cycle</span>
+          </div>
+          <div id="sourceMappingContent">
+            <div class="empty-state">
+              <div class="icon">🔄</div>
+              <h3>No sync data yet</h3>
+              <p>Source mapping populates after the first aggregation cycle runs.</p>
+            </div>
+          </div>
+        </div>
+
         <!-- Field Map -->
         <div class="card">
           <div class="card-title">
@@ -283,17 +299,32 @@
 
     <!-- ═══ TAB: Data ═══ -->
     <div class="tab-content" id="panelData" style="grid-column: 1 / -1;">
-      <div class="card">
-        <div class="card-title">
-          <span class="icon" style="background: rgba(251,191,36,0.15); color: var(--warning);">📊</span>
-          Consolidated Data
-          <button class="btn btn-sm" id="btnRefreshData" style="margin-left: auto; background: var(--bg-glass); color: var(--text-secondary); border: 1px solid var(--border-color);">⟳ Refresh</button>
+      <div style="display: flex; flex-direction: column; gap: 24px;">
+
+        <!-- Object type switcher -->
+        <div class="card" style="padding: 16px 24px;">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <span style="font-size:13px;font-weight:600;color:var(--text-secondary);">View:</span>
+            <div class="data-view-tabs" id="dataViewTabs">
+              <button class="data-view-tab active" data-view="party">👤 Party Objects</button>
+              <button class="data-view-tab" data-view="account">🏦 Account Objects</button>
+              <button class="data-view-tab" data-view="raw">📦 Raw Data</button>
+            </div>
+            <button class="btn btn-sm" id="btnRefreshData" style="margin-left:auto;background:var(--bg-glass);color:var(--text-secondary);border:1px solid var(--border-color);">⟳ Refresh</button>
+          </div>
         </div>
-        <div id="dataContent">
-          <div class="empty-state">
-            <div class="icon">📭</div>
-            <h3>No consolidated data</h3>
-            <p>Data will appear here once connectors fetch and the aggregator runs.</p>
+
+        <div class="card">
+          <div class="card-title" id="dataCardTitle">
+            <span class="icon" style="background: rgba(251,191,36,0.15); color: var(--warning);">📊</span>
+            <span id="dataCardLabel">Party Objects</span>
+          </div>
+          <div id="dataContent">
+            <div class="empty-state">
+              <div class="icon">📭</div>
+              <h3>No data yet</h3>
+              <p>Data will appear here once connectors fetch and the aggregator runs (every 2 min).</p>
+            </div>
           </div>
         </div>
       </div>

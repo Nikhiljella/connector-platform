@@ -1329,6 +1329,37 @@ body::before {
   margin-left: auto;
 }
 
+/* ── Data view tabs ── */
+.data-view-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-secondary);
+  padding: 3px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-color);
+}
+
+.data-view-tab {
+  padding: 7px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.data-view-tab:hover { color: var(--text-primary); background: var(--bg-glass); }
+
+.data-view-tab.active {
+  background: var(--accent-primary);
+  color: white;
+}
+
 /* ── Transform pills on connector cards ── */
 .transform-pill {
   display: inline-block;

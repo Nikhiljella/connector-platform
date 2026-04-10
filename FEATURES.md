@@ -27,14 +27,33 @@
 5. Test — runs a live fetch to confirm everything works
 
 ## Connectors Tab
-- Lists all connectors with name, URL, schedule, status, last fetch time
-- Shows field selection and mapping counts per connector
-- Delete button to remove a connector
 
-## Consolidated Data Tab
-- Table of the latest 50 records across all connectors, with transforms applied
-- Data appears as the mapped bank object fields (e.g. `partyId`, `fullName`) not raw API fields
-- Refresh button
+**Connector Table**
+- Proper table showing: Priority, Connector name + URL, Target Object badge (👤 Party / 🏦 Account), fields selected/mapped, schedule, last fetch, status
+- ↑/↓ buttons to reorder connector priority — lower number = higher precedence when the same field comes from multiple connectors
+- Delete removes the connector and all associated data
+
+**Source Mapping**
+- One row per connector showing sync metadata: target object, schedule, selected fields, field mapping summary, last synced time, records fetched this sync, total records
+
+**Party / Account Field Map**
+- Each target field (e.g. `email`, `partyId`) shown as a card
+- Lists which connectors contribute to that field in priority order, labeled PRIMARY / FALLBACK
+- ⚡ conflict indicator when multiple connectors map to the same field
+
+## Data Tab
+
+Three views switchable at the top:
+- **Party Objects** — structured table with canonical party columns (partyId, fullName, email, phone, etc.) populated by the aggregator
+- **Account Objects** — structured table with canonical account columns (accountId, accountNumber, currency, balance, etc.)
+- **Raw Data** — unstructured consolidated_data table showing all records as fetched
+
+## Storage Architecture
+- `connector_data_N` — raw fetched records per connector (refreshed on each cron tick)
+- `source_mapping` — one row per connector: sync schedule, field selection, field mapping, sync stats
+- `party_objects` — final party records with explicit columns, built from mapped connector data
+- `account_objects` — final account records with explicit columns
+- `consolidated_data` — raw consolidated records (all connectors, untransformed fallback)
 
 ## General
 - Toast notifications for all actions

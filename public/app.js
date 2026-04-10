@@ -479,14 +479,15 @@
 
   async function loadConnectors() {
     try {
-      const [connRes, mapRes] = await Promise.all([
-        fetch('/api/connectors'),
-        fetch('/api/field-map'),
+      // Fetch independently so one failure doesn't block the others
+      const [connJson, mapJson, srcJson] = await Promise.all([
+        fetch('/api/connectors').then(r => r.json()).catch(() => ({ success: false, data: [] })),
+        fetch('/api/field-map').then(r => r.json()).catch(() => ({ success: false, data: {} })),
+        fetch('/api/source-mapping').then(r => r.json()).catch(() => ({ success: false, data: [] })),
       ]);
-      const connJson = await connRes.json();
-      const mapJson = await mapRes.json();
 
       renderConnectorTable(connJson.success ? connJson.data : []);
+      renderSourceMapping(srcJson.success ? srcJson.data : []);
       renderFieldMap(mapJson.success ? mapJson.data : {});
     } catch (err) {
       toast(`Failed to load connectors: ${err.message}`, 'error');
@@ -582,6 +583,70 @@
       </div>`;
   }
 
+  function renderSourceMapping(rows) {
+    const el = $('#sourceMappingContent');
+    if (!rows.length) {
+      el.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">🔄</div>
+          <h3>No sync data yet</h3>
+          <p>Source mapping populates after the first aggregation cycle runs.</p>
+        </div>`;
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="ct-wrap">
+        <table class="ct">
+          <thead>
+            <tr>
+              <th>Connector</th>
+              <th>Target</th>
+              <th>Schedule</th>
+              <th>Selected Fields</th>
+              <th>Field Mapping</th>
+              <th>Last Synced</th>
+              <th>This Sync</th>
+              <th>Total Records</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(r => {
+              const fields = Array.isArray(r.selected_fields) ? r.selected_fields : [];
+              const mapping = typeof r.field_mapping === 'object' ? r.field_mapping : {};
+              const mappingEntries = Object.entries(mapping);
+              return `<tr class="ct-row">
+                <td style="font-weight:600;">${escapeHtml(r.connector_name)}</td>
+                <td>
+                  ${r.target_object
+                    ? `<span class="obj-badge ${r.target_object}">${r.target_object === 'party' ? '👤' : '🏦'} ${r.target_object}</span>`
+                    : '<span style="color:var(--text-muted);font-size:12px;">raw</span>'}
+                </td>
+                <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);">${escapeHtml(r.sync_schedule || '—')}</td>
+                <td>
+                  <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                    ${fields.map(f => `<span class="field-chip">${escapeHtml(f)}</span>`).join('') || '<span style="color:var(--text-muted);font-size:11px;">all</span>'}
+                  </div>
+                </td>
+                <td>
+                  <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                    ${mappingEntries.slice(0, 4).map(([src, tgt]) =>
+                      `<span class="field-chip" title="${escapeHtml(src)} → ${escapeHtml(tgt)}">${escapeHtml(src)} → ${escapeHtml(tgt)}</span>`
+                    ).join('')}
+                    ${mappingEntries.length > 4 ? `<span style="font-size:11px;color:var(--text-muted);">+${mappingEntries.length - 4} more</span>` : ''}
+                    ${mappingEntries.length === 0 ? '<span style="color:var(--text-muted);font-size:11px;">none</span>' : ''}
+                  </div>
+                </td>
+                <td style="font-size:12px;color:var(--text-muted);">${r.last_synced_at ? new Date(r.last_synced_at).toLocaleString() : '—'}</td>
+                <td style="font-size:13px;font-weight:600;color:var(--accent-secondary);">${r.records_this_sync ?? 0}</td>
+                <td style="font-size:13px;color:var(--text-secondary);">${r.total_records ?? 0}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
   function renderFieldMap(fieldMap) {
     const el = $('#fieldMapContent');
     const objectTypes = Object.keys(fieldMap);
@@ -668,54 +733,121 @@
   //  DATA TAB
   // ══════════════════════════════════════════
 
+  const PARTY_COLS = ['partyId','partyType','fullName','email','phone','address','country','status'];
+  const ACCOUNT_COLS = ['accountId','accountNumber','accountType','currency','balance','status','openDate','ownerId'];
+
+  let currentDataView = 'party';
+
+  $$('.data-view-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $$('.data-view-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentDataView = btn.dataset.view;
+      const labels = { party: 'Party Objects', account: 'Account Objects', raw: 'Raw Consolidated Data' };
+      $('#dataCardLabel').textContent = labels[currentDataView];
+      loadData();
+    });
+  });
+
   async function loadData() {
+    const content = $('#dataContent');
+    content.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px;">Loading...</div>';
+
     try {
-      const res = await fetch('/api/data?limit=50');
-      const json = await res.json();
-
-      if (!json.success || json.data.length === 0) {
-        $('#dataContent').innerHTML = `
-          <div class="empty-state">
-            <div class="icon">📭</div>
-            <h3>No consolidated data</h3>
-            <p>Data will appear here once connectors fetch and the aggregator runs.</p>
-          </div>`;
-        return;
+      if (currentDataView === 'party') {
+        await loadObjectData('/api/party-objects', PARTY_COLS, 'source_connector_name');
+      } else if (currentDataView === 'account') {
+        await loadObjectData('/api/account-objects', ACCOUNT_COLS, 'source_connector_name');
+      } else {
+        await loadRawData();
       }
-
-      const firstRow = json.data[0].data;
-      const fields = typeof firstRow === 'object' ? Object.keys(firstRow).slice(0, 6) : ['data'];
-
-      let html = `
-        <div class="data-table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Connector</th>
-                <th>Fetched At</th>
-                ${fields.map(f => `<th>${escapeHtml(f)}</th>`).join('')}
-              </tr>
-            </thead>
-            <tbody>
-              ${json.data.map(row => {
-                const d = row.data;
-                return `<tr>
-                  <td><span class="status-badge active" style="font-size:10px;">${escapeHtml(row.connector_name)}</span></td>
-                  <td>${row.fetched_at ? new Date(row.fetched_at).toLocaleString() : '—'}</td>
-                  ${fields.map(f => `<td>${escapeHtml(String(d && d[f] !== undefined ? d[f] : ''))}</td>`).join('')}
-                </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-        <p style="margin-top:12px;font-size:12px;color:var(--text-muted);">
-          Showing ${json.data.length} of ${json.pagination.total} records
-        </p>`;
-
-      $('#dataContent').innerHTML = html;
     } catch (err) {
       toast(`Failed to load data: ${err.message}`, 'error');
     }
+  }
+
+  async function loadObjectData(endpoint, cols, connectorCol) {
+    const res = await fetch(`${endpoint}?limit=50`);
+    const json = await res.json();
+    const content = $('#dataContent');
+
+    if (!json.success || !json.data.length) {
+      content.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">📭</div>
+          <h3>No records yet</h3>
+          <p>Data appears here after connectors fetch and the aggregator runs (every 2 min).</p>
+        </div>`;
+      return;
+    }
+
+    content.innerHTML = `
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Fetched At</th>
+              ${cols.map(c => `<th>${escapeHtml(c)}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${json.data.map(row => `<tr>
+              <td><span class="status-badge active" style="font-size:10px;">${escapeHtml(row[connectorCol] || '—')}</span></td>
+              <td style="font-size:11px;color:var(--text-muted);">${row.fetched_at ? new Date(row.fetched_at).toLocaleString() : '—'}</td>
+              ${cols.map(c => `<td>${escapeHtml(String(row[c] !== null && row[c] !== undefined ? row[c] : ''))}</td>`).join('')}
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <p style="margin-top:12px;font-size:12px;color:var(--text-muted);">
+        Showing ${json.data.length} of ${json.pagination.total} records
+      </p>`;
+  }
+
+  async function loadRawData() {
+    const res = await fetch('/api/data?limit=50');
+    const json = await res.json();
+    const content = $('#dataContent');
+
+    if (!json.success || !json.data.length) {
+      content.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">📭</div>
+          <h3>No raw data yet</h3>
+          <p>Data appears here after connectors fetch and the aggregator runs.</p>
+        </div>`;
+      return;
+    }
+
+    const firstRow = json.data[0].data;
+    const fields = typeof firstRow === 'object' ? Object.keys(firstRow).slice(0, 6) : ['data'];
+
+    content.innerHTML = `
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Connector</th>
+              <th>Fetched At</th>
+              ${fields.map(f => `<th>${escapeHtml(f)}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${json.data.map(row => {
+              const d = row.data;
+              return `<tr>
+                <td><span class="status-badge active" style="font-size:10px;">${escapeHtml(row.connector_name)}</span></td>
+                <td style="font-size:11px;">${row.fetched_at ? new Date(row.fetched_at).toLocaleString() : '—'}</td>
+                ${fields.map(f => `<td>${escapeHtml(String(d && d[f] !== undefined ? d[f] : ''))}</td>`).join('')}
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <p style="margin-top:12px;font-size:12px;color:var(--text-muted);">
+        Showing ${json.data.length} of ${json.pagination.total} records
+      </p>`;
   }
 
   $('#btnRefreshData').addEventListener('click', loadData);
