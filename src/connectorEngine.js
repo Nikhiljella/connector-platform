@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const fetch = require('node-fetch');
 const { getDb, getConnectorDataTableName } = require('./db');
+const { applyTransforms } = require('./transformEngine');
 
 const activeJobs = new Map();
 
