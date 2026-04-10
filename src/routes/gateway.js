@@ -1,6 +1,29 @@
 const express = require('express');
 const router = express.Router();
 const { getDb, getConnectorDataTableName } = require('../db');
+const validateAgent = require('../agents/validateAgent');
+
+// POST /api/preview — test a URL and return detected fields + sample data (no DB writes)
+router.post('/preview', async (req, res) => {
+  const { apiUrl, headers } = req.body;
+  if (!apiUrl) return res.status(400).json({ success: false, error: 'apiUrl is required.' });
+
+  try {
+    const report = await validateAgent.execute({ apiUrl, headers });
+    if (report.status === 'failed') {
+      return res.json({ success: false, error: report.message });
+    }
+    res.json({
+      success: true,
+      fields: report.fields,
+      sampleData: report.sampleData,
+      recordCount: report.recordCount,
+      message: report.message,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // GET /api/connectors — list all connectors
 router.get('/connectors', (req, res) => {
@@ -41,8 +64,8 @@ router.delete('/connectors/:id', (req, res) => {
     const id = req.params.id;
 
     stopConnector(Number(id));
-    db.prepare('DELETE FROM connectors WHERE id = ?').run(id);
     db.prepare('DELETE FROM consolidated_data WHERE connector_id = ?').run(id);
+    db.prepare('DELETE FROM connectors WHERE id = ?').run(id);
 
     const tableName = getConnectorDataTableName(id);
     try { db.exec(`DROP TABLE IF EXISTS ${tableName}`); } catch (e) { /* ignore */ }

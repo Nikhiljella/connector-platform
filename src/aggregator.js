@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const { getDb, getConnectorDataTableName } = require('./db');
+const { applyTransforms } = require('./transformEngine');
 
 let aggregatorJob = null;
 
@@ -58,8 +59,23 @@ function runAggregation() {
           ).all();
         }
 
-        for (const row of rows) {
-          insertStmt.run(connector.id, connector.name, row.data, row.fetched_at);
+        // Parse the connector's transform pipeline
+        let transforms = [];
+        try {
+          transforms = JSON.parse(connector.transforms || '[]');
+        } catch (e) { /* malformed — skip transforms */ }
+
+        // Parse raw rows and apply transforms if any are configured
+        const rawObjects = rows.map(r => {
+          try { return JSON.parse(r.data); } catch { return r.data; }
+        });
+        const transformed = transforms.length > 0
+          ? applyTransforms(rawObjects, transforms)
+          : rawObjects;
+
+        for (let i = 0; i < rows.length; i++) {
+          const outputData = transformed[i] !== undefined ? transformed[i] : rawObjects[i];
+          insertStmt.run(connector.id, connector.name, JSON.stringify(outputData), rows[i].fetched_at);
           totalRows++;
         }
       }

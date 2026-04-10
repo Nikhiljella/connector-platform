@@ -28,6 +28,7 @@ function initTables() {
       schedule TEXT NOT NULL DEFAULT '*/5 * * * *',
       headers TEXT DEFAULT '{}',
       field_mapping TEXT DEFAULT '{}',
+      transforms TEXT DEFAULT '[]',
       status TEXT NOT NULL DEFAULT 'pending',
       created_at TEXT DEFAULT (datetime('now')),
       last_fetched_at TEXT,
@@ -44,6 +45,12 @@ function initTables() {
       FOREIGN KEY (connector_id) REFERENCES connectors(id)
     );
   `);
+
+  // Migrate: add transforms column if it doesn't exist (for databases created before this column was added)
+  const cols = db.prepare("PRAGMA table_info(connectors)").all().map(c => c.name);
+  if (!cols.includes('transforms')) {
+    db.exec("ALTER TABLE connectors ADD COLUMN transforms TEXT DEFAULT '[]'");
+  }
 }
 
 function createConnectorDataTable(connectorId) {

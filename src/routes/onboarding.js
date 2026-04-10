@@ -5,7 +5,7 @@ const crypto = require('crypto');
 
 // POST /api/onboard — start onboarding
 router.post('/', async (req, res) => {
-  const { name, apiUrl, schedule, headers, fieldMapping } = req.body;
+  const { name, apiUrl, schedule, headers, fieldSelection, targetObject, targetMapping } = req.body;
 
   if (!name || !apiUrl) {
     return res.status(400).json({ success: false, error: 'name and apiUrl are required.' });
@@ -18,7 +18,7 @@ router.post('/', async (req, res) => {
 
   // Run the pipeline asynchronously
   try {
-    await onboard({ name, apiUrl, schedule, headers, fieldMapping }, sessionId);
+    await onboard({ name, apiUrl, schedule, headers, fieldSelection, targetObject, targetMapping }, sessionId);
   } catch (err) {
     progressEmitter.emit('progress', {
       sessionId,

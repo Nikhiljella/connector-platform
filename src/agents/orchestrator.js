@@ -1,5 +1,6 @@
 const validateAgent = require('./validateAgent');
 const scaffoldAgent = require('./scaffoldAgent');
+const transformAgent = require('./transformAgent');
 const registerAgent = require('./registerAgent');
 const testAgent = require('./testAgent');
 
@@ -20,13 +21,13 @@ function emit(sessionId, step, report) {
   });
 }
 
-async function onboard({ name, apiUrl, schedule, headers, fieldMapping }, sessionId) {
+async function onboard({ name, apiUrl, schedule, headers, fieldSelection, targetObject, targetMapping }, sessionId) {
   const pipeline = [];
   let connectorId = null;
 
   // Step 1: Validate
   emit(sessionId, 1, { agent: 'ValidateAgent', status: 'running', message: 'Validating API endpoint...' });
-  await sleep(500); // Small delay for UI animation
+  await sleep(500);
   const validateReport = await validateAgent.execute({ apiUrl, headers });
   emit(sessionId, 1, validateReport);
   pipeline.push(validateReport);
@@ -38,14 +39,11 @@ async function onboard({ name, apiUrl, schedule, headers, fieldMapping }, sessio
 
   // Step 2: Scaffold
   await sleep(400);
-  emit(sessionId, 2, { agent: 'ScaffoldAgent', status: 'running', message: 'Scaffolding connector config...' });
+  emit(sessionId, 2, { agent: 'ScaffoldAgent', status: 'running', message: 'Scaffolding connector config and building transform pipeline...' });
   await sleep(500);
   const scaffoldReport = scaffoldAgent.execute({
-    name,
-    apiUrl,
-    schedule,
-    headers,
-    fieldMapping,
+    name, apiUrl, schedule, headers,
+    fieldSelection, targetObject, targetMapping,
     fields: validateReport.fields,
   });
   emit(sessionId, 2, scaffoldReport);
@@ -56,12 +54,28 @@ async function onboard({ name, apiUrl, schedule, headers, fieldMapping }, sessio
     return { success: false, pipeline, error: scaffoldReport.message };
   }
 
-  // Step 3: Register
+  // Step 3: Transform — validate and dry-run the transform rules
   await sleep(400);
-  emit(sessionId, 3, { agent: 'RegisterAgent', status: 'running', message: 'Registering connector and starting scheduler...' });
+  emit(sessionId, 3, { agent: 'TransformAgent', status: 'running', message: 'Validating transform rules and running dry-run on sample data...' });
+  await sleep(500);
+  const transformReport = transformAgent.execute({
+    transforms: scaffoldReport.config.transforms,
+    sampleData: validateReport.sampleData,
+  });
+  emit(sessionId, 3, transformReport);
+  pipeline.push(transformReport);
+
+  if (transformReport.status === 'failed') {
+    emit(sessionId, 0, { agent: 'Orchestrator', status: 'failed', message: `Onboarding failed at transform validation: ${transformReport.message}` });
+    return { success: false, pipeline, error: transformReport.message };
+  }
+
+  // Step 4: Register
+  await sleep(400);
+  emit(sessionId, 4, { agent: 'RegisterAgent', status: 'running', message: 'Registering connector and starting scheduler...' });
   await sleep(500);
   const registerReport = registerAgent.execute({ config: scaffoldReport.config });
-  emit(sessionId, 3, registerReport);
+  emit(sessionId, 4, registerReport);
   pipeline.push(registerReport);
 
   if (registerReport.status === 'failed') {
@@ -71,12 +85,12 @@ async function onboard({ name, apiUrl, schedule, headers, fieldMapping }, sessio
 
   connectorId = registerReport.connectorId;
 
-  // Step 4: Test
+  // Step 5: Test
   await sleep(400);
-  emit(sessionId, 4, { agent: 'TestAgent', status: 'running', message: 'Running test fetch...' });
+  emit(sessionId, 5, { agent: 'TestAgent', status: 'running', message: 'Running test fetch...' });
   await sleep(500);
   const testReport = await testAgent.execute({ connectorId });
-  emit(sessionId, 4, testReport);
+  emit(sessionId, 5, testReport);
   pipeline.push(testReport);
 
   if (testReport.status === 'failed') {

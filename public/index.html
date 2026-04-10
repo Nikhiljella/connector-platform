@@ -41,38 +41,56 @@
   <main class="main">
     <!-- Nav Tabs -->
     <nav class="nav-tabs" id="navTabs">
-      <button class="nav-tab active" data-tab="onboard" id="tabOnboard">
+      <button class="nav-tab active" data-tab="onboard">
         🤖 Onboard Connector
       </button>
-      <button class="nav-tab" data-tab="connectors" id="tabConnectors">
+      <button class="nav-tab" data-tab="connectors">
         🔗 Connectors
       </button>
-      <button class="nav-tab" data-tab="data" id="tabData">
+      <button class="nav-tab" data-tab="data">
         📊 Consolidated Data
       </button>
     </nav>
 
     <!-- ═══ TAB: Onboard ═══ -->
     <div class="tab-content active" id="panelOnboard" style="grid-column: 1 / -1;">
-      <div style="display: grid; grid-template-columns: 420px 1fr; gap: 32px;">
-        <!-- Left: Form -->
+      <div class="onboard-layout">
+
+        <!-- Left: Wizard -->
         <div class="card" id="onboardCard">
           <div class="card-title">
             <span class="icon" style="background: rgba(99,102,241,0.15); color: var(--accent-secondary);">🛰️</span>
             New Connector
           </div>
 
-          <form id="onboardForm" autocomplete="off">
+          <!-- Wizard Progress Bar -->
+          <div class="wizard-progress">
+            <div class="wizard-step active" id="wpStep1">
+              <div class="wp-node">1</div>
+              <span>Connect</span>
+            </div>
+            <div class="wizard-line" id="wl1"></div>
+            <div class="wizard-step" id="wpStep2">
+              <div class="wp-node">2</div>
+              <span>Select Fields</span>
+            </div>
+            <div class="wizard-line" id="wl2"></div>
+            <div class="wizard-step" id="wpStep3">
+              <div class="wp-node">3</div>
+              <span>Map Object</span>
+            </div>
+          </div>
+
+          <!-- ── Wizard Step 1: Connection Setup ── -->
+          <div class="wizard-panel active" id="wizardStep1">
             <div class="form-group">
               <label>Connector Name <span class="required">*</span></label>
-              <input type="text" id="inputName" placeholder="e.g. JSONPlaceholder Posts" required>
+              <input type="text" id="inputName" placeholder="e.g. Core Banking Users" required>
             </div>
-
             <div class="form-group">
               <label>API URL <span class="required">*</span></label>
-              <input type="url" id="inputUrl" placeholder="https://jsonplaceholder.typicode.com/posts" required>
+              <input type="url" id="inputUrl" placeholder="https://api.example.com/customers" required>
             </div>
-
             <div class="form-row">
               <div class="form-group">
                 <label>Schedule (Cron)</label>
@@ -86,24 +104,93 @@
                 </select>
               </div>
             </div>
-
             <div class="form-group">
               <label>Headers (JSON)</label>
               <textarea id="inputHeaders" placeholder='{"Authorization": "Bearer token"}'>{}</textarea>
             </div>
 
-            <div class="form-group">
-              <label>Field Mapping (JSON, optional)</label>
-              <textarea id="inputMapping" placeholder='{"source_field": "target_field"}'>{}</textarea>
+            <button type="button" class="btn btn-secondary" id="btnTestConnection">
+              🔍 Test Connection
+            </button>
+
+            <!-- Connection result -->
+            <div id="connectionResult" class="hidden"></div>
+
+            <div class="wizard-nav">
+              <span></span>
+              <button type="button" class="btn btn-primary" id="btnStep1Next" disabled>
+                Next: Select Fields →
+              </button>
+            </div>
+          </div>
+
+          <!-- ── Wizard Step 2: Field Selection ── -->
+          <div class="wizard-panel" id="wizardStep2">
+            <div class="step-intro">
+              <h3>Select Interested Fields</h3>
+              <p>Choose which fields from the API response you want to extract. Unselected fields will be discarded.</p>
+            </div>
+            <div class="field-selection-list" id="fieldSelectionList">
+              <!-- Populated dynamically -->
+            </div>
+            <div class="wizard-nav">
+              <button type="button" class="btn btn-ghost" id="btnStep2Back">← Back</button>
+              <button type="button" class="btn btn-primary" id="btnStep2Next">
+                Next: Map Object →
+              </button>
+            </div>
+          </div>
+
+          <!-- ── Wizard Step 3: Target Object Mapping ── -->
+          <div class="wizard-panel" id="wizardStep3">
+            <div class="step-intro">
+              <h3>Map to Bank Object</h3>
+              <p>Select the target schema and map each source field to the corresponding bank object field.</p>
             </div>
 
-            <button type="submit" class="btn btn-primary" id="btnOnboard">
-              🚀 Start Onboarding
-            </button>
-          </form>
+            <div class="form-group">
+              <label>Target Object Type</label>
+              <div class="object-type-selector" id="objectTypeSelector">
+                <button type="button" class="object-type-btn active" data-type="party">
+                  <span class="obj-icon">👤</span>
+                  <span class="obj-label">Party</span>
+                  <span class="obj-desc">Customer / counterparty</span>
+                </button>
+                <button type="button" class="object-type-btn" data-type="account">
+                  <span class="obj-icon">🏦</span>
+                  <span class="obj-label">Account</span>
+                  <span class="obj-desc">Bank account / product</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="mapping-section">
+              <div class="mapping-header">
+                <span>Source Field</span>
+                <span></span>
+                <span>Target Field</span>
+              </div>
+              <div class="mapping-rows" id="mappingRows">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+
+            <!-- Live preview -->
+            <div class="preview-section">
+              <div class="preview-label">Preview — mapped record</div>
+              <pre class="preview-code" id="mappingPreview">{}</pre>
+            </div>
+
+            <div class="wizard-nav">
+              <button type="button" class="btn btn-ghost" id="btnStep3Back">← Back</button>
+              <button type="button" class="btn btn-primary" id="btnStartOnboarding">
+                🚀 Start Onboarding
+              </button>
+            </div>
+          </div>
         </div>
 
-        <!-- Right: Agent Progress -->
+        <!-- Right: Agent Pipeline -->
         <div class="card" id="progressCard">
           <div class="card-title">
             <span class="icon" style="background: rgba(168,85,247,0.15); color: #a855f7;">🧠</span>
@@ -112,7 +199,6 @@
 
           <div class="progress-panel">
             <div class="agent-steps" id="agentSteps">
-              <!-- Step 1: Validate -->
               <div class="agent-step" id="step1">
                 <div class="step-indicator pending" id="ind1">1</div>
                 <div class="step-content">
@@ -120,7 +206,6 @@
                   <p id="msg1">Waiting to validate API endpoint...</p>
                 </div>
               </div>
-              <!-- Step 2: Scaffold -->
               <div class="agent-step" id="step2">
                 <div class="step-indicator pending" id="ind2">2</div>
                 <div class="step-content">
@@ -128,25 +213,29 @@
                   <p id="msg2">Waiting to generate connector config...</p>
                 </div>
               </div>
-              <!-- Step 3: Register -->
               <div class="agent-step" id="step3">
                 <div class="step-indicator pending" id="ind3">3</div>
                 <div class="step-content">
-                  <h4>Register Agent</h4>
-                  <p id="msg3">Waiting to register and start scheduler...</p>
+                  <h4>Transform Agent</h4>
+                  <p id="msg3">Waiting to validate transform rules...</p>
                 </div>
               </div>
-              <!-- Step 4: Test -->
               <div class="agent-step" id="step4">
                 <div class="step-indicator pending" id="ind4">4</div>
                 <div class="step-content">
+                  <h4>Register Agent</h4>
+                  <p id="msg4">Waiting to register and start scheduler...</p>
+                </div>
+              </div>
+              <div class="agent-step" id="step5">
+                <div class="step-indicator pending" id="ind5">5</div>
+                <div class="step-content">
                   <h4>Test Agent</h4>
-                  <p id="msg4">Waiting to run test fetch...</p>
+                  <p id="msg5">Waiting to run test fetch...</p>
                 </div>
               </div>
             </div>
 
-            <!-- Orchestrator final message -->
             <div id="orchMessage" class="hidden" style="margin-top: 24px; padding: 16px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600; text-align: center;"></div>
           </div>
         </div>
