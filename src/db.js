@@ -38,16 +38,6 @@ function initTables() {
       last_error    TEXT
     );
 
-    CREATE TABLE IF NOT EXISTS consolidated_data (
-      id               INTEGER PRIMARY KEY AUTOINCREMENT,
-      connector_id     INTEGER NOT NULL,
-      connector_name   TEXT NOT NULL,
-      data             TEXT NOT NULL,
-      fetched_at       TEXT NOT NULL,
-      consolidated_at  TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (connector_id) REFERENCES connectors(id)
-    );
-
     -- One row per connector: sync schedule metadata and field mapping summary
     CREATE TABLE IF NOT EXISTS source_mapping (
       connector_id      INTEGER PRIMARY KEY,
@@ -59,50 +49,50 @@ function initTables() {
       last_synced_at    TEXT,
       records_this_sync INTEGER DEFAULT 0,
       total_records     INTEGER DEFAULT 0,
-      FOREIGN KEY (connector_id) REFERENCES connectors(id)
+      FOREIGN KEY (connector_id) REFERENCES connectors(id) ON DELETE CASCADE
     );
 
     -- Structured party objects built from mapped connector data
     CREATE TABLE IF NOT EXISTS party_objects (
-      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-      partyId             TEXT,
-      partyType           TEXT,
-      fullName            TEXT,
-      firstName           TEXT,
-      lastName            TEXT,
-      dateOfBirth         TEXT,
-      nationalId          TEXT,
-      email               TEXT,
-      phone               TEXT,
-      address             TEXT,
-      country             TEXT,
-      status              TEXT,
+      id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+      partyId               TEXT,
+      partyType             TEXT,
+      fullName              TEXT,
+      firstName             TEXT,
+      lastName              TEXT,
+      dateOfBirth           TEXT,
+      nationalId            TEXT,
+      email                 TEXT,
+      phone                 TEXT,
+      address               TEXT,
+      country               TEXT,
+      status                TEXT,
       source_connector_id   INTEGER,
       source_connector_name TEXT,
-      fetched_at          TEXT,
-      created_at          TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (source_connector_id) REFERENCES connectors(id)
+      fetched_at            TEXT,
+      created_at            TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (source_connector_id) REFERENCES connectors(id) ON DELETE CASCADE
     );
 
     -- Structured account objects built from mapped connector data
     CREATE TABLE IF NOT EXISTS account_objects (
-      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-      accountId           TEXT,
-      accountNumber       TEXT,
-      accountType         TEXT,
-      currency            TEXT,
-      balance             TEXT,
-      status              TEXT,
-      openDate            TEXT,
-      ownerId             TEXT,
-      branchCode          TEXT,
-      productCode         TEXT,
-      iban                TEXT,
+      id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+      accountId             TEXT,
+      accountNumber         TEXT,
+      accountType           TEXT,
+      currency              TEXT,
+      balance               TEXT,
+      status                TEXT,
+      openDate              TEXT,
+      ownerId               TEXT,
+      branchCode            TEXT,
+      productCode           TEXT,
+      iban                  TEXT,
       source_connector_id   INTEGER,
       source_connector_name TEXT,
-      fetched_at          TEXT,
-      created_at          TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (source_connector_id) REFERENCES connectors(id)
+      fetched_at            TEXT,
+      created_at            TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (source_connector_id) REFERENCES connectors(id) ON DELETE CASCADE
     );
   `);
 }

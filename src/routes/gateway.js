@@ -139,18 +139,16 @@ router.delete('/connectors/:id', (req, res) => {
   try {
     const db = getDb();
     const { stopConnector } = require('../connectorEngine');
-    const id = req.params.id;
+    const id = Number(req.params.id);
 
-    stopConnector(Number(id));
-    // Delete child rows first (foreign key constraint)
-    db.prepare('DELETE FROM consolidated_data WHERE connector_id = ?').run(id);
-    db.prepare('DELETE FROM party_objects WHERE source_connector_id = ?').run(id);
-    db.prepare('DELETE FROM account_objects WHERE source_connector_id = ?').run(id);
-    db.prepare('DELETE FROM source_mapping WHERE connector_id = ?').run(id);
+    // Stop cron job before touching the DB
+    stopConnector(id);
+
+    // ON DELETE CASCADE handles consolidated_data, party_objects, account_objects, source_mapping
     db.prepare('DELETE FROM connectors WHERE id = ?').run(id);
 
-    const tableName = getConnectorDataTableName(id);
-    try { db.exec(`DROP TABLE IF EXISTS ${tableName}`); } catch (e) { /* ignore */ }
+    // connector_data_N has no FK — drop it manually
+    try { db.exec(`DROP TABLE IF EXISTS ${getConnectorDataTableName(id)}`); } catch { /* ignore */ }
 
     res.json({ success: true, message: `Connector ${id} deleted.` });
   } catch (err) {
@@ -218,59 +216,42 @@ router.get('/account-objects', (req, res) => {
   }
 });
 
-// GET /api/data — consolidated data with pagination
-router.get('/data', (req, res) => {
+// GET /api/raw-data — reads directly from each connector's connector_data_N table
+router.get('/raw-data', (req, res) => {
   try {
     const db = getDb();
     const limit = Math.min(parseInt(req.query.limit) || 50, 500);
-    const offset = parseInt(req.query.offset) || 0;
-    const connectorId = req.query.connector_id;
+    const filterConnectorId = req.query.connector_id ? Number(req.query.connector_id) : null;
 
-    let query = 'SELECT * FROM consolidated_data';
-    let countQuery = 'SELECT COUNT(*) as total FROM consolidated_data';
-    const params = [];
+    const connectors = filterConnectorId
+      ? db.prepare('SELECT id, name FROM connectors WHERE id = ?').all(filterConnectorId)
+      : db.prepare("SELECT id, name FROM connectors WHERE status = 'active' ORDER BY priority ASC").all();
 
-    if (connectorId) {
-      query += ' WHERE connector_id = ?';
-      countQuery += ' WHERE connector_id = ?';
-      params.push(connectorId);
+    const rows = [];
+    for (const c of connectors) {
+      const tableName = `connector_data_${c.id}`;
+      const exists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(tableName);
+      if (!exists) continue;
+
+      const fetched = db.prepare(
+        `SELECT id, data, fetched_at FROM ${tableName} ORDER BY fetched_at DESC LIMIT ?`
+      ).all(limit);
+
+      for (const r of fetched) {
+        rows.push({
+          connector_id: c.id,
+          connector_name: c.name,
+          fetched_at: r.fetched_at,
+          data: (() => { try { return JSON.parse(r.data); } catch { return r.data; } })(),
+        });
+      }
     }
 
-    const totalResult = db.prepare(countQuery).get(...params);
-    query += ' ORDER BY consolidated_at DESC LIMIT ? OFFSET ?';
-    const rows = db.prepare(query).all(...params, limit, offset);
+    // Sort merged results by fetched_at desc and apply limit
+    rows.sort((a, b) => (b.fetched_at > a.fetched_at ? 1 : -1));
+    const page = rows.slice(0, limit);
 
-    // Parse data JSON
-    const parsed = rows.map(r => ({
-      ...r,
-      data: (() => { try { return JSON.parse(r.data); } catch { return r.data; } })(),
-    }));
-
-    res.json({
-      success: true,
-      data: parsed,
-      pagination: { total: totalResult.total, limit, offset },
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// GET /api/data/:connectorId — data for a specific connector
-router.get('/data/:connectorId', (req, res) => {
-  try {
-    const db = getDb();
-    const limit = Math.min(parseInt(req.query.limit) || 50, 500);
-    const rows = db.prepare(
-      'SELECT * FROM consolidated_data WHERE connector_id = ? ORDER BY consolidated_at DESC LIMIT ?'
-    ).all(req.params.connectorId, limit);
-
-    const parsed = rows.map(r => ({
-      ...r,
-      data: (() => { try { return JSON.parse(r.data); } catch { return r.data; } })(),
-    }));
-
-    res.json({ success: true, data: parsed });
+    res.json({ success: true, data: page, total: rows.length });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -282,7 +263,9 @@ router.get('/stats', (req, res) => {
     const db = getDb();
     const connectorCount = db.prepare('SELECT COUNT(*) as cnt FROM connectors').get().cnt;
     const activeCount = db.prepare("SELECT COUNT(*) as cnt FROM connectors WHERE status = 'active'").get().cnt;
-    const dataCount = db.prepare('SELECT COUNT(*) as cnt FROM consolidated_data').get().cnt;
+    const partyCount = db.prepare('SELECT COUNT(*) as cnt FROM party_objects').get().cnt;
+    const accountCount = db.prepare('SELECT COUNT(*) as cnt FROM account_objects').get().cnt;
+    const dataCount = partyCount + accountCount;
 
     res.json({
       success: true,

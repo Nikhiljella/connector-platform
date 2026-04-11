@@ -49,11 +49,11 @@ Three views switchable at the top:
 - **Raw Data** — unstructured consolidated_data table showing all records as fetched
 
 ## Storage Architecture
-- `connector_data_N` — raw fetched records per connector (refreshed on each cron tick)
-- `source_mapping` — one row per connector: sync schedule, field selection, field mapping, sync stats
-- `party_objects` — final party records with explicit columns, built from mapped connector data
-- `account_objects` — final account records with explicit columns
-- `consolidated_data` — raw consolidated records (all connectors, untransformed fallback)
+- `connector_data_N` — raw fetched records per connector (one table per connector, updated on each cron tick)
+- `source_mapping` — one row per connector: sync schedule, selected fields, field mapping, last synced time, record counts
+- `party_objects` — final party records with explicit columns (partyId, fullName, email, etc.), built by the aggregator
+- `account_objects` — final account records with explicit columns (accountId, accountNumber, balance, etc.)
+- All child tables cascade-delete when a connector is removed
 
 ## General
 - Toast notifications for all actions

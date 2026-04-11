@@ -806,7 +806,7 @@
   }
 
   async function loadRawData() {
-    const res = await fetch('/api/data?limit=50');
+    const res = await fetch('/api/raw-data?limit=50');
     const json = await res.json();
     const content = $('#dataContent');
 
@@ -815,7 +815,7 @@
         <div class="empty-state">
           <div class="icon">📭</div>
           <h3>No raw data yet</h3>
-          <p>Data appears here after connectors fetch and the aggregator runs.</p>
+          <p>Data appears here after connectors start fetching.</p>
         </div>`;
       return;
     }
@@ -846,7 +846,7 @@
         </table>
       </div>
       <p style="margin-top:12px;font-size:12px;color:var(--text-muted);">
-        Showing ${json.data.length} of ${json.pagination.total} records
+        Showing ${json.data.length} of ${json.total} records
       </p>`;
   }
 
