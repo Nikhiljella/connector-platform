@@ -1,0 +1,16 @@
+cdx:
+  git:
+    repo-path: /opt/cdx/repo          # Absolute path to the local cloned repo
+    remote: origin
+    branch: main
+    author-name: CDX Platform
+    author-email: cdx-platform@internal.com
+    secret-name: cdx/git/credentials   # AWS Secrets Manager secret name
+
+spring:
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      credentials:
+        instance-profile: true         # Use IAM role when running on EC2/ECS

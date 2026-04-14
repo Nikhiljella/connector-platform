@@ -29,8 +29,7 @@
 ## Connectors Tab
 
 **Connector Table**
-- Proper table showing: Priority, Connector name + URL, Target Object badge (👤 Party / 🏦 Account), fields selected/mapped, schedule, last fetch, status
-- ↑/↓ buttons to reorder connector priority — lower number = higher precedence when the same field comes from multiple connectors
+- Proper table showing: Connector name + URL, Target Object badge (👤 Party / 🏦 Account), fields selected/mapped, schedule, last fetch, status
 - Delete removes the connector and all associated data
 
 **Source Mapping**
@@ -39,7 +38,9 @@
 **Party / Account Field Map**
 - Each target field (e.g. `email`, `partyId`) shown as a card
 - Lists which connectors contribute to that field in priority order, labeled PRIMARY / FALLBACK
+- ↑/↓ buttons to reorder priority per field — each field has its own independent source ranking
 - ⚡ conflict indicator when multiple connectors map to the same field
+- Stored as `final_object_mapping` — one JSON row per target object with the full field→sources structure
 
 ## Data Tab
 
@@ -53,6 +54,7 @@ Three views switchable at the top:
 - `source_mapping` — one row per connector: sync schedule, selected fields, field mapping, last synced time, record counts
 - `party_objects` — final party records with explicit columns (partyId, fullName, email, etc.), built by the aggregator
 - `account_objects` — final account records with explicit columns (accountId, accountNumber, balance, etc.)
+- `final_object_mapping` — one row per target object (party/account); mapping JSON stores each target field with an ordered list of connector sources for field-level priority
 - All child tables cascade-delete when a connector is removed
 
 ## General

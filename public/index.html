@@ -79,6 +79,11 @@
               <div class="wp-node">3</div>
               <span>Map Object</span>
             </div>
+            <div class="wizard-line" id="wl3"></div>
+            <div class="wizard-step" id="wpStep4">
+              <div class="wp-node">4</div>
+              <span>Transforms</span>
+            </div>
           </div>
 
           <!-- ── Wizard Step 1: Connection Setup ── -->
@@ -183,6 +188,54 @@
 
             <div class="wizard-nav">
               <button type="button" class="btn btn-ghost" id="btnStep3Back">← Back</button>
+              <button type="button" class="btn btn-primary" id="btnStep3Next">
+                Next: Transforms →
+              </button>
+            </div>
+          </div>
+
+          <!-- ── Wizard Step 4: Field Transformations ── -->
+          <div class="wizard-panel" id="wizardStep4">
+            <div class="step-intro">
+              <h3>Define Field Transformations</h3>
+              <p>Describe how each field should be transformed on every pull. AI will generate the transformation code from your instructions.</p>
+            </div>
+
+            <!-- AI Generate bar -->
+            <div class="transform-ai-bar">
+              <div class="transform-ai-info">
+                <span class="transform-ai-icon">✨</span>
+                <div>
+                  <strong>AI Transform Generation</strong>
+                  <span>Describe transformations in plain English — AI generates the code automatically</span>
+                </div>
+              </div>
+              <button type="button" class="btn btn-ai" id="btnGenerateTransforms" disabled>
+                <span class="spinner-ai"></span>
+                Generate with AI
+              </button>
+            </div>
+
+            <!-- Per-field transform instructions -->
+            <div class="transform-fields-list" id="transformFieldsList">
+              <!-- Populated dynamically -->
+            </div>
+
+            <!-- Transform preview -->
+            <div class="transform-preview-section" id="transformPreviewSection">
+              <div class="transform-preview-header">
+                <span class="preview-label">Generated Transform Rules</span>
+                <span class="transform-preview-badge coming-soon">Coming Soon</span>
+              </div>
+              <pre class="preview-code transform-preview-code" id="transformPreview">// AI-generated transform rules will appear here
+// Example:
+// { "op": "cast",      "field": "balance",     "to": "number" }
+// { "op": "timestamp", "field": "dateOfBirth",  "format": "YYYY-MM-DD" }
+// { "op": "template",  "field": "fullName",     "template": "{{firstName}} {{lastName}}" }</pre>
+            </div>
+
+            <div class="wizard-nav">
+              <button type="button" class="btn btn-ghost" id="btnStep4Back">← Back</button>
               <button type="button" class="btn btn-primary" id="btnStartOnboarding">
                 🚀 Start Onboarding
               </button>

@@ -26,7 +26,8 @@
   let sampleData = [];
   let selectedFields = [];
   let targetObject = 'party';
-  let targetMapping = {}; // { sourceField: targetField }
+  let targetMapping = {};    // { sourceField: targetField }
+  let transformInstructions = {}; // { sourceField: "plain English instruction" }
 
   // ── Tab navigation ──
   $$('.nav-tab').forEach(tab => {
@@ -80,7 +81,7 @@
     wizardStep = step;
 
     // Update progress nodes
-    for (let i = 1; i <= 3; i++) {
+    for (let i = 1; i <= 4; i++) {
       const node = $(`#wpStep${i}`);
       node.classList.remove('active', 'complete');
       if (i < step) node.classList.add('complete');
@@ -88,7 +89,7 @@
     }
 
     // Update connector lines
-    for (let i = 1; i <= 2; i++) {
+    for (let i = 1; i <= 3; i++) {
       $(`#wl${i}`).classList.toggle('complete', i < step);
     }
 
@@ -98,6 +99,7 @@
 
     if (step === 2) renderFieldSelection();
     if (step === 3) renderTargetMapping();
+    if (step === 4) renderTransformFields();
   }
 
   // ── Step 1: Test Connection ──
@@ -321,6 +323,73 @@
 
   $('#btnStep3Back').addEventListener('click', () => goToStep(2));
 
+  $('#btnStep3Next').addEventListener('click', () => {
+    // Capture current mapping state before advancing
+    const selects = $$('.mapping-select');
+    selects.forEach(sel => {
+      if (sel.value) targetMapping[sel.dataset.source] = sel.value;
+      else delete targetMapping[sel.dataset.source];
+    });
+    goToStep(4);
+  });
+
+  // ── Step 4: Transform Fields ──
+  function renderTransformFields() {
+    const container = $('#transformFieldsList');
+    const sample = sampleData[0] || {};
+
+    if (selectedFields.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">No fields selected.</p>';
+      return;
+    }
+
+    container.innerHTML = selectedFields.map(src => {
+      const targetField = targetMapping[src] || src;
+      const sampleVal   = sample[src] !== undefined ? String(sample[src]).slice(0, 50) : null;
+      const instruction = transformInstructions[src] || '';
+
+      return `
+        <div class="transform-field-row" data-field="${escapeHtml(src)}">
+          <div class="tf-field-info">
+            <span class="tf-source">${escapeHtml(src)}</span>
+            <span class="tf-arrow">→</span>
+            <span class="tf-target">${escapeHtml(targetField)}</span>
+            ${sampleVal ? `<span class="tf-sample">${escapeHtml(sampleVal)}</span>` : ''}
+          </div>
+          <div class="tf-instruction-wrap">
+            <input
+              type="text"
+              class="tf-instruction"
+              data-field="${escapeHtml(src)}"
+              placeholder='e.g. "convert date to ISO 8601", "cast to number", "uppercase"'
+              value="${escapeHtml(instruction)}"
+            >
+            <span class="tf-hint">Plain English — AI will generate the code</span>
+          </div>
+        </div>`;
+    }).join('');
+
+    // Sync instructions state on change; enable AI button when any instruction is filled
+    container.querySelectorAll('.tf-instruction').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const field = inp.dataset.field;
+        if (inp.value.trim()) transformInstructions[field] = inp.value.trim();
+        else delete transformInstructions[field];
+        $('#btnGenerateTransforms').disabled = Object.keys(transformInstructions).length === 0;
+      });
+    });
+
+    // Reflect current state (e.g. if returning from a later step)
+    $('#btnGenerateTransforms').disabled = Object.keys(transformInstructions).length === 0;
+  }
+
+  $('#btnStep4Back').addEventListener('click', () => goToStep(3));
+
+  // AI generate button — placeholder, wired up when AI integration ships
+  $('#btnGenerateTransforms').addEventListener('click', () => {
+    toast('AI transform generation coming soon.', 'info');
+  });
+
   // ── Submit ──
   $('#btnStartOnboarding').addEventListener('click', async () => {
     const name = $('#inputName').value.trim();
@@ -352,6 +421,7 @@
           fieldSelection: selectedFields,
           targetObject,
           targetMapping,
+          transformInstructions,
         }),
       });
       const json = await res.json();
@@ -425,6 +495,7 @@
     selectedFields = [];
     targetObject = 'party';
     targetMapping = {};
+    transformInstructions = {};
     goToStep(1);
   }
 
@@ -512,7 +583,6 @@
         <table class="ct">
           <thead>
             <tr>
-              <th style="width:80px;">Priority</th>
               <th>Connector</th>
               <th>Target</th>
               <th>Fields</th>
@@ -534,15 +604,6 @@
               const isLast = idx === connectors.length - 1;
 
               return `<tr class="ct-row fade-in">
-                <td>
-                  <div class="priority-cell">
-                    <span class="priority-badge">${c.priority}</span>
-                    <div class="priority-btns">
-                      <button class="prio-btn" title="Move up" onclick="shiftPriority(${c.id},'up')" ${isFirst ? 'disabled' : ''}>↑</button>
-                      <button class="prio-btn" title="Move down" onclick="shiftPriority(${c.id},'down')" ${isLast ? 'disabled' : ''}>↓</button>
-                    </div>
-                  </div>
-                </td>
                 <td>
                   <div class="ct-name-cell">
                     <div class="connector-avatar" style="width:32px;height:32px;font-size:14px;">${c.name.charAt(0).toUpperCase()}</div>
@@ -684,10 +745,13 @@
                   <div class="fm-sources">
                     ${sources.map((s, i) => `
                       <div class="fm-source ${i === 0 ? 'primary' : 'fallback'}">
+                        <div class="fm-prio-btns">
+                          <button class="prio-btn" onclick="shiftFieldPriority('${escapeHtml(objType)}','${escapeHtml(field)}',${s.connectorId},'up')" ${i === 0 ? 'disabled' : ''}>↑</button>
+                          <button class="prio-btn" onclick="shiftFieldPriority('${escapeHtml(objType)}','${escapeHtml(field)}',${s.connectorId},'down')" ${i === sources.length - 1 ? 'disabled' : ''}>↓</button>
+                        </div>
                         <span class="fm-rank">${i === 0 ? 'PRIMARY' : `FALLBACK ${i}`}</span>
                         <span class="fm-connector-name">${escapeHtml(s.connectorName)}</span>
                         <span class="fm-source-field">← ${escapeHtml(s.sourceField)}</span>
-                        <span class="fm-priority-num">P${s.priority}</span>
                       </div>`).join('')}
                   </div>
                 </div>`;
@@ -697,16 +761,16 @@
     }).join('');
   }
 
-  window.shiftPriority = async function (id, direction) {
+  window.shiftFieldPriority = async function (targetObject, targetField, connectorId, direction) {
     try {
-      const res = await fetch(`/api/connectors/${id}/priority`, {
+      const res = await fetch(`/api/field-priority/${encodeURIComponent(targetObject)}/${encodeURIComponent(targetField)}/${connectorId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ direction }),
       });
       const json = await res.json();
       if (json.success) loadConnectors();
-      else toast(json.error || 'Failed to update priority.', 'error');
+      else toast(json.error || 'Failed to update field priority.', 'error');
     } catch (err) {
       toast(`Error: ${err.message}`, 'error');
     }

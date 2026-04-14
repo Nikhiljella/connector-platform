@@ -45,15 +45,14 @@ function createSchema() {
       field_mapping   TEXT             DEFAULT '{}',
       transforms      TEXT             DEFAULT '[]',
       target_object   TEXT,
-      priority        INTEGER          DEFAULT 0,
       status          TEXT    NOT NULL DEFAULT 'pending',
       created_at      TEXT             DEFAULT (datetime('now')),
       last_fetched_at TEXT,
       last_error      TEXT
     );
 
-    CREATE INDEX IF NOT EXISTS idx_connectors_status_priority
-      ON connectors (status, priority);
+    CREATE INDEX IF NOT EXISTS idx_connectors_status
+      ON connectors (status);
 
 
     -- ── Raw connector data ────────────────────────────────────────────────────
@@ -86,7 +85,7 @@ function createSchema() {
 
     CREATE TABLE IF NOT EXISTS party_objects (
       id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-      partyId               TEXT,
+      partyId               TEXT    UNIQUE,
       partyType             TEXT,
       fullName              TEXT,
       firstName             TEXT,
@@ -114,7 +113,7 @@ function createSchema() {
 
     CREATE TABLE IF NOT EXISTS account_objects (
       id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-      accountId             TEXT,
+      accountId             TEXT    UNIQUE,
       accountNumber         TEXT,
       accountType           TEXT,
       currency              TEXT,
@@ -134,6 +133,20 @@ function createSchema() {
 
     CREATE INDEX IF NOT EXISTS idx_account_connector
       ON account_objects (source_connector_id, fetched_at);
+
+
+    -- ── Final object mapping ──────────────────────────────────────────────────
+    -- One row per target_object ('party' | 'account').
+    -- mapping: JSON object where each key is a target field name and the value
+    -- is a priority-ordered array of source descriptors:
+    --   { "email": [{"connectorId":1,"connectorName":"Users","sourceField":"email"}, …], … }
+    -- Index 0 = primary source; subsequent entries are ordered fallbacks.
+
+    CREATE TABLE IF NOT EXISTS final_object_mapping (
+      target_object TEXT    PRIMARY KEY,
+      mapping       TEXT    NOT NULL DEFAULT '{}',
+      updated_at    TEXT    DEFAULT (datetime('now'))
+    );
 
   `);
 }

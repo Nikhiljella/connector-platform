@@ -25,11 +25,11 @@ router.post('/preview', async (req, res) => {
   }
 });
 
-// GET /api/connectors — list all connectors ordered by priority
+// GET /api/connectors — list all connectors ordered by creation
 router.get('/connectors', (req, res) => {
   try {
     const db = getDb();
-    const connectors = db.prepare('SELECT * FROM connectors ORDER BY priority ASC, id ASC').all();
+    const connectors = db.prepare('SELECT * FROM connectors ORDER BY id ASC').all();
     res.json({ success: true, data: connectors });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -56,79 +56,56 @@ router.get('/connectors/:id', (req, res) => {
   }
 });
 
-// PATCH /api/connectors/:id/priority — swap priority with adjacent connector
-router.patch('/connectors/:id/priority', (req, res) => {
+// GET /api/field-map — field → connectors mapping from final_object_mapping
+router.get('/field-map', (req, res) => {
   try {
     const db = getDb();
-    const id = Number(req.params.id);
-    const { direction } = req.body; // 'up' | 'down'
+    const rows = db.prepare('SELECT target_object, mapping FROM final_object_mapping').all();
 
-    const current = db.prepare('SELECT id, priority FROM connectors WHERE id = ?').get(id);
-    if (!current) return res.status(404).json({ success: false, error: 'Connector not found' });
-
-    // Find the adjacent connector to swap with
-    let adjacent;
-    if (direction === 'up') {
-      adjacent = db.prepare(
-        'SELECT id, priority FROM connectors WHERE priority < ? ORDER BY priority DESC LIMIT 1'
-      ).get(current.priority);
-    } else {
-      adjacent = db.prepare(
-        'SELECT id, priority FROM connectors WHERE priority > ? ORDER BY priority ASC LIMIT 1'
-      ).get(current.priority);
+    const fieldMap = {};
+    for (const row of rows) {
+      let mapping = {};
+      try { mapping = JSON.parse(row.mapping); } catch {}
+      fieldMap[row.target_object] = mapping;
     }
 
-    if (!adjacent) return res.json({ success: true, message: 'Already at boundary.' });
-
-    // Swap
-    db.prepare('UPDATE connectors SET priority = ? WHERE id = ?').run(adjacent.priority, current.id);
-    db.prepare('UPDATE connectors SET priority = ? WHERE id = ?').run(current.priority, adjacent.id);
-
-    res.json({ success: true });
+    res.json({ success: true, data: fieldMap });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// GET /api/field-map — field → connectors mapping derived from transforms, ordered by priority
-router.get('/field-map', (req, res) => {
+// PATCH /api/field-priority/:targetObject/:targetField/:connectorId — reorder within final_object_mapping
+router.patch('/field-priority/:targetObject/:targetField/:connectorId', (req, res) => {
   try {
     const db = getDb();
-    const connectors = db.prepare(
-      "SELECT id, name, target_object, transforms, priority FROM connectors WHERE status = 'active' ORDER BY priority ASC"
-    ).all();
+    const { targetObject, targetField, connectorId } = req.params;
+    const { direction } = req.body; // 'up' | 'down'
 
-    // Build map: { party: { email: [{connectorId, connectorName, priority, sourceField}] } }
-    const fieldMap = {};
+    const row = db.prepare('SELECT mapping FROM final_object_mapping WHERE target_object = ?').get(targetObject);
+    if (!row) return res.status(404).json({ success: false, error: 'No mapping found for target object.' });
 
-    for (const connector of connectors) {
-      let transforms = [];
-      try { transforms = JSON.parse(connector.transforms || '[]'); } catch { continue; }
+    let mapping = {};
+    try { mapping = JSON.parse(row.mapping); } catch {}
 
-      const targetObj = connector.target_object || 'unknown';
-      if (!fieldMap[targetObj]) fieldMap[targetObj] = {};
+    const sources = mapping[targetField];
+    if (!sources) return res.status(404).json({ success: false, error: 'Field not found in mapping.' });
 
-      // Find pick op to know selected source fields
-      const pickOp = transforms.find(t => t.op === 'pick');
-      const selectedFields = pickOp ? pickOp.fields : [];
+    const idx = sources.findIndex(s => s.connectorId === Number(connectorId));
+    if (idx === -1) return res.status(404).json({ success: false, error: 'Connector not found for this field.' });
 
-      // Build a map of sourceField → targetField from rename ops
-      const renameMap = {};
-      transforms.filter(t => t.op === 'rename').forEach(t => { renameMap[t.from] = t.to; });
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sources.length) return res.json({ success: true, message: 'Already at boundary.' });
 
-      for (const src of selectedFields) {
-        const tgt = renameMap[src] || src;
-        if (!fieldMap[targetObj][tgt]) fieldMap[targetObj][tgt] = [];
-        fieldMap[targetObj][tgt].push({
-          connectorId: connector.id,
-          connectorName: connector.name,
-          priority: connector.priority,
-          sourceField: src,
-        });
-      }
-    }
+    // Swap in-place
+    [sources[idx], sources[swapIdx]] = [sources[swapIdx], sources[idx]];
+    mapping[targetField] = sources;
 
-    res.json({ success: true, data: fieldMap });
+    db.prepare(
+      `UPDATE final_object_mapping SET mapping = ?, updated_at = datetime('now') WHERE target_object = ?`
+    ).run(JSON.stringify(mapping), targetObject);
+
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -144,7 +121,26 @@ router.delete('/connectors/:id', (req, res) => {
     // Stop cron job before touching the DB
     stopConnector(id);
 
-    // ON DELETE CASCADE handles consolidated_data, party_objects, account_objects, source_mapping
+    // Remove this connector from final_object_mapping for all target objects
+    const mappingRows = db.prepare('SELECT target_object, mapping FROM final_object_mapping').all();
+    for (const row of mappingRows) {
+      let mapping = {};
+      try { mapping = JSON.parse(row.mapping); } catch {}
+      let changed = false;
+      for (const field of Object.keys(mapping)) {
+        const before = mapping[field].length;
+        mapping[field] = mapping[field].filter(s => s.connectorId !== id);
+        if (mapping[field].length !== before) changed = true;
+        if (mapping[field].length === 0) delete mapping[field];
+      }
+      if (changed) {
+        db.prepare(
+          `UPDATE final_object_mapping SET mapping = ?, updated_at = datetime('now') WHERE target_object = ?`
+        ).run(JSON.stringify(mapping), row.target_object);
+      }
+    }
+
+    // ON DELETE CASCADE handles party_objects, account_objects, source_mapping
     db.prepare('DELETE FROM connectors WHERE id = ?').run(id);
 
     // connector_data_N has no FK — drop it manually
